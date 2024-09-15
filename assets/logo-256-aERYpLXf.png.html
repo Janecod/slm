@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>The Real World</title>
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="viewport"
+      content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="msapplication-tap-highlight" content="no" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="X-Frame-Options" content="DENY">
+
+    <link rel="icon" type="image/x-icon" href="/icons/favicon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="favicon" href="/icons/favicon.png" />
+
+    <link rel="dns-prefetch" href="https://eden.therealworld.ag" />
+    <link rel="dns-prefetch" href="https://nile.therealworld.ag" />
+    <link rel="dns-prefetch" href="https://api.therealworld.ag" />
+    <link rel="dns-prefetch" href="https://workers.therealworld.ag" />
+
+    <script type="module" crossorigin src="/assets/index-Da8HIENV.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DBlQmto9.css">
+  </head>
+  <body data-theme="dark" class="bg-neutral">
+    <script>
+      const theme = localStorage.getItem("theme");
+      if (theme) {
+        document.body.setAttribute("data-theme", theme);
+      }
+    </script>
+      <canvas id="matrix-canvas" class="transition-all delay-200 duration-800 ease-in"></canvas>
+      <div
+        id="matrix-overlay"
+        class="matrix-background mix-blend-lighten pointer-events-none absolute inset-0 grayscale bg-base-dark bg-cover opacity-40 transition-all duration-500 ease-in"
+      ></div>
+      <style>body, html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: black;
+}
+
+#matrix-canvas {
+  display: block;
+  mix-blend-mode: lighten;
+}</style>
+      <script>
+        ;(function() {
+          try {
+            const canvas = document.getElementById('matrix-canvas').transferControlToOffscreen();  
+            let matrixWorker = `
+              let interval = setInterval(() => {}, 0);
+              let canvas,
+              ctx,
+              width,
+              height,
+              columns,
+              fontSize;
+
+              function startDrawing() {
+                clearInterval(interval);
+                const chars = 'アァカサタナハマヤャラワガザダバパイィキシチニヒミリヰギジヂビピウゥクスツヌフムユュルグズブヅプエェケセテネヘメレヱゲゼデベペオォコソトノホモヨョロヲゴゾドボポヴッン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+                const raindrops = Array.from({ length: columns }, () => (height / fontSize) * (Math.random() + 0.1));
+                // const raindrops = Array.from({ length: columns }, () => 1);
+                
+                const draw = () => {
+                  
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+                    ctx.fillRect(0, 0, width, height);
+      
+                    ctx.fillStyle = 'rgba(150, 150, 150, 0.6)';
+                    ctx.font = \`\${fontSize}px monospace\`;
+      
+                    for (let i = 0; i < raindrops.length; i++) {
+                        const text = chars[~~(Math.random() * chars.length)];
+                        const x = i * fontSize;
+                        const y = raindrops[i] * fontSize;
+      
+                        ctx.fillText(text, x, y);
+      
+                        if (y > height && Math.random() > 0.99) {
+                            raindrops[i] = 0;
+                        }
+                        raindrops[i]++;
+                    }
+                };
+                interval = setInterval(draw, 40);
+              }
+
+
+              // Waiting to receive the OffScreenCanvas
+              self.onmessage = (event) => {
+                if (event.data.setup) {
+                  let _ = {
+                    canvas,
+                    width,
+                    height,
+                    columns,
+                    fontSize,
+                  } = event.data.setup;
+                  ctx = canvas.getContext("2d");
+                  startDrawing();
+                } else if (event.data.resize) {
+                  let _ = {
+                    width,
+                    height,
+                    columns,
+                    fontSize,
+                  } = event.data.resize;
+                } else if (event.data.start) {
+                  startDrawing();
+                } else if (event.data.stop) {
+                  clearInterval(interval);
+                }
+              };
+            `
+            let worker = new Worker(URL.createObjectURL(new Blob([matrixWorker], { type: 'application/javascript' })))
+            
+            const cleanupAnimation = () => {
+              document.getElementById('matrix-canvas').style.opacity = 0;
+              document.getElementById('matrix-overlay').style.opacity = 0;
+            }
+
+            const prepareAnimation = () => {
+              document.getElementById('matrix-canvas').style.opacity = 1;
+              document.getElementById('matrix-overlay').style.opacity = 0.4;
+            }
+            
+            const calculateSizes = () => {
+              const fontSize = 14;
+              let width = canvas.width = window.innerWidth;
+              let height = canvas.height = window.innerHeight;
+              let columns = Math.floor(width / fontSize);
+              return { width, height, columns, fontSize };
+            }
+
+            worker.postMessage({ setup: { canvas, ...calculateSizes() } }, [canvas]);
+            
+            const resize = () => {
+              worker.postMessage({ resize: { ...calculateSizes() } });
+            };
+    
+            
+            window.addEventListener('resize', resize);
+            resize();
+
+            // A debounce for multiple functions. 
+            // Returns an array of functions sharing the same debounce timer
+            const multiBounce = (fns, delay = 100) => {
+              let timer;
+              return fns.map((fn) => {
+                return (...args) => {
+                  clearTimeout(timer);
+                  timer = setTimeout(() => {
+                    fn(...args);
+                  }, delay);
+                };
+              });
+            };
+
+            
+            let isRunning = true;
+            let start = () => {
+              if (isRunning) return;
+              isRunning = true;
+              prepareAnimation();
+              worker.postMessage({ start: true });
+            };
+            start();
+
+            let stop = () => {
+              if (!isRunning) return;
+              isRunning = false;
+              cleanupAnimation();
+              setTimeout(() => {
+                worker.postMessage({ stop: true });
+              }, 1000)
+            };
+            let _ = [start, stop] = multiBounce([start, stop], 100);
+            window.__startMatrixAnimation = start;
+            window.__stopMatrixAnimation = stop;
+
+          } catch (e) {
+            console.error(e);
+          }
+        })();
+      </script>
+    <div id="root"></div>
+  </body>
+</html>
